@@ -1,0 +1,20 @@
+version: "0.1.1"
+
+semantic_model:
+  - name: minimal_model
+    datasets:
+      - name: fact
+        source: warehouse.public.fact_table
+        fields:
+          - name: id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: id
+
+    metrics:
+      - name: row_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(*)

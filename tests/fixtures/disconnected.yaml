@@ -1,0 +1,27 @@
+version: "0.1.1"
+
+semantic_model:
+  - name: disconnected_model
+    datasets:
+      - name: alpha
+        source: schema.alpha_t
+        fields:
+          - name: id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: id
+      - name: beta
+        source: schema.beta_t
+        fields:
+          - name: id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: id
+    metrics:
+      - name: cnt
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(*)

@@ -1,0 +1,45 @@
+//! Errors from resolving a [`SemanticQuery`](crate::query::SemanticQuery) against an OSI document.
+
+/// Resolution failed (unknown model, bad references, inconsistent base dataset, etc.).
+#[derive(Debug, thiserror::Error)]
+pub enum QueryError {
+    #[error("semantic model not found: {0:?}")]
+    ModelNotFound(String),
+
+    #[error("dataset not found: {0:?}")]
+    DatasetNotFound(String),
+
+    #[error("field not found: {0}")]
+    FieldNotFound(String),
+
+    #[error("metric not found: {0:?}")]
+    MetricNotFound(String),
+
+    #[error("invalid field reference {0:?}: expected dataset.field")]
+    InvalidFieldRef(String),
+
+    #[error("inconsistent base dataset: expected {expected:?}, saw {got:?}")]
+    InconsistentBaseDataset { expected: String, got: String },
+
+    #[error(
+        "`dataset` is required when `group_by` and filters are empty but metrics are requested"
+    )]
+    MissingBaseDataset,
+
+    #[error(
+        "`dataset` is required as the join root when the query references more than one logical dataset"
+    )]
+    MissingRootDataset,
+
+    #[error("datasets are not connected by relationships: {0:?}")]
+    DisconnectedDatasets(Vec<String>),
+
+    #[error("no relationship join path from {from:?} to {to:?}")]
+    NoJoinPath { from: String, to: String },
+
+    #[error("query must request at least one `group_by` field, metric, or filter")]
+    EmptyQuery,
+
+    #[error("expression has no dialect entries usable for planning")]
+    MissingExpressionSql,
+}

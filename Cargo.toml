@@ -1,0 +1,21 @@
+[package]
+name = "osi-substrait"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "OSI metadata: types, validation, query planning, SQL and Substrait emission"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+keywords = ["osi", "semantic", "substrait", "sql"]
+categories = ["database", "parser-implementations"]
+
+[features]
+default = []
+substrait = ["dep:substrait"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+substrait = { version = "0.62", features = ["serde"], optional = true }
+thiserror = "2"
