@@ -1,30 +1,69 @@
 # osi-substrait
 
-Library for the **OSI core metadata** shape: load documents, validate them, resolve [`SemanticQuery`](src/query/spec.rs) against a model, build a [`LogicalPlan`](src/plan/mod.rs), and emit **SQL** or (with a feature flag) **Substrait**.
+> Compile [Open Semantic Interchange](https://github.com/open-semantic-interchange/OSI) (OSI) semantic models into **Substrait** plans — portable IR for DataFusion, Velox, and other Substrait-capable engines.
 
-- **Spec:** [Open Semantic Interchange](https://github.com/open-semantic-interchange/OSI) — this crate mirrors `osi-schema.json` as Rust types.
-- **No storage, no HTTP** — pure in-memory API for use from CLIs, servers, or tests.
+## What is this?
+
+**osi-substrait** implements the path **OSI document → validated model → bound query → logical plan → Substrait**. Load YAML/JSON, resolve a SemanticQuery against a named model and compile an open **Substrait** plan.
+
+The crate also exposes **ANSI-style SQL** via [`emit::sql::to_sql`](src/emit/sql.rs) — useful for debugging, quick inspection, or engines that only accept SQL.
+
+- **Spec-aligned** — Types follow `osi-schema.json`; validation runs before planning.
+- **Join-aware binding** — Relationships drive join paths; `dataset.field` references resolve through the model.
+- **Engine-agnostic execution** — Substrait decouples the semantic layer from any one runtime.
+- **Composable and lightweight** — Pure Rust library with no runtime server. Embed it in an API, CLI tool, or compute engine
+
+```
+OSI ──► validate ──► bind_query(model, SemanticQuery) ──► LogicalPlan ──► Substrait
+                                                                     └──► SQL        
+```
 
 ## Features
 
-| Feature | Effect |
-|---------|--------|
-| *(default)* | SQL emission via `emit::sql` |
-| `substrait` | Substrait emission via `emit::substrait` (extra dependency) |
+| Area | What you get |
+|------|----------------|
+| **I/O** | Parse OSI from YAML or JSON (`parser`) |
+| **Validation** | Check documents (`validate`) |
+| **Queries** | Bind [`SemanticQuery`](src/query/spec.rs) (group by, metrics, filters, optional dataset anchor) |
+| **Planning** | `LogicalPlan` for emission or inspection |
+| **Emit** | **`emit::substrait::to_plan`** — enable `--features substrait` |
+| **Emit** | `emit::sql::to_sql` — no extra feature; convenience / interop |
 
-## Test
+## Example
 
-```sh
-cargo test
-cargo test --features substrait
+```rust
+use osi_substrait::prelude::*;
+
+let doc = from_yaml_str(yaml)?;
+validate(&doc)?;
+
+let query = SemanticQuery {
+    metrics: vec!["row_count".into()],
+    dataset: Some("fact".into()),
+    ..Default::default()
+};
+
+let plan = build_logical_plan(&bind_query(&doc, "minimal_model", &query)?)?;
+
+#[cfg(feature = "substrait")]
+{
+    let _substrait = to_plan(&plan)?; // primary: feed to your Substrait executor
+}
+
+let _sql = to_sql(&plan)?; // secondary: inspect or send to a SQL engine
 ```
 
-Fixtures live under [`tests/fixtures/`](tests/fixtures).
+(`minimal_model` / `row_count` / `fact` match [`tests/fixtures/minimal.yaml`](tests/fixtures/minimal.yaml).)
 
-The `tpcds_example_parses_and_validates` test is **ignored by default**; it needs the [OSI](https://github.com/open-semantic-interchange/OSI) repo cloned **next to** this repository (`../OSI/examples/…`). Run `cargo test -- --include-ignored` after cloning OSI.
+## Development
 
-## Publishing to crates.io
+```sh
+cargo test --features substrait   # Substrait code paths + tests
+cargo test                        # core + SQL only (no Substrait dep)
+```
 
-1. Add `repository = "https://github.com/<you>/osi-substrait"` (and optional `documentation`) under `[package]` in `Cargo.toml`.
-2. `cargo publish --dry-run`
-3. `cargo publish`
+Fixtures: [`tests/fixtures/`](tests/fixtures/). The TPC-DS example test is **`#[ignore]`** unless you clone [OSI](https://github.com/open-semantic-interchange/OSI) next to this repo (`../OSI/examples/…`); then `cargo test -- --include-ignored`.
+
+## License
+
+Licensed under **MIT OR Apache-2.0** — see `LICENSE-MIT` and `LICENSE-APACHE`.
