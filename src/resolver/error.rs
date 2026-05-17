@@ -42,4 +42,7 @@ pub enum QueryError {
 
     #[error("expression has no dialect entries usable for planning")]
     MissingExpressionSql,
+
+    #[error("invalid MNML expression: {0}")]
+    InvalidMnmlExpression(String),
 }

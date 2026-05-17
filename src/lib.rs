@@ -15,6 +15,7 @@ pub mod plan;
 pub mod planner;
 pub mod query;
 pub mod resolver;
+pub(crate) mod sql_quote;
 pub mod validate;
 
 pub use resolver::QueryError;
@@ -33,5 +34,5 @@ pub mod prelude {
     pub use crate::validate::validate;
 
     #[cfg(feature = "substrait")]
-    pub use crate::emit::substrait::to_plan;
+    pub use crate::emit::substrait::{encode_plan, to_plan};
 }

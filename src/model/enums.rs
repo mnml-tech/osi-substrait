@@ -11,6 +11,9 @@ pub enum Dialect {
     Mdx,
     Tableau,
     Databricks,
+    /// MNML structured expression dialect (osi-substrait extension).
+    #[serde(rename = "MNML")]
+    Mnml,
 }
 
 /// Supported vendors for custom extensions (`$defs.Vendor`).
@@ -22,4 +25,7 @@ pub enum Vendor {
     Salesforce,
     Dbt,
     Databricks,
+    /// MNML platform extensions (not in OSI core enum).
+    #[serde(rename = "MNML")]
+    Mnml,
 }

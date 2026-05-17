@@ -11,6 +11,16 @@ semantic_model:
               dialects:
                 - dialect: ANSI_SQL
                   expression: id
+          - name: day
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: day
+          - name: month_days
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: month_days
 
     metrics:
       - name: row_count

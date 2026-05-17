@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::model::{Dataset, Field, Metric, OsiDocument, Relationship, SemanticModel};
+use crate::plan::JoinKey;
 use crate::query::SemanticQuery;
 use crate::resolver::QueryError;
 
@@ -19,6 +20,8 @@ pub struct BoundFilter {
     pub field: ResolvedField,
     pub operator: String,
     pub value: serde_json::Value,
+    /// Set when `operator` is `eq_field` / `eq_column`: RHS field (`value` is JSON string `dataset.field`).
+    pub rhs_field: Option<ResolvedField>,
 }
 
 /// One INNER JOIN step (left-deep): `left_dataset` already in the tree, add `right_dataset`.
@@ -26,8 +29,8 @@ pub struct BoundFilter {
 pub struct BoundJoin {
     pub left_dataset: String,
     pub right_dataset: String,
-    /// `left.col = right.col` fragments for `ON`.
-    pub on_predicates: Vec<String>,
+    /// Equi-join keys for this step.
+    pub on: Vec<JoinKey>,
 }
 
 /// Fully bound query: one or more logical datasets joined by relationships.
@@ -64,6 +67,17 @@ pub fn bind_query(
     let mut paths: Vec<String> = Vec::new();
     paths.extend(spec.group_by.iter().cloned());
     paths.extend(spec.filters.iter().map(|f| f.field.clone()));
+    paths.extend(spec.filters.iter().filter_map(|f| {
+        if matches!(
+            f.operator.as_deref(),
+            Some("eq_field" | "eq_column")
+        ) && f.value.as_str().is_some()
+        {
+            f.value.as_str().map(str::to_string)
+        } else {
+            None
+        }
+    }));
 
     let path_datasets: HashSet<String> = paths
         .iter()
@@ -136,10 +150,21 @@ pub fn bind_query(
                 "eq".to_string()
             }
         });
+        let rhs_field = if matches!(operator.as_str(), "eq_field" | "eq_column") {
+            let path = f.value.as_str().ok_or_else(|| {
+                QueryError::InvalidFieldRef(
+                    "eq_field / eq_column filter requires string value `dataset.field`".to_string(),
+                )
+            })?;
+            Some(resolve_field(path)?)
+        } else {
+            None
+        };
         filters.push(BoundFilter {
             field,
             operator,
             value: f.value.clone(),
+            rhs_field,
         });
     }
 
@@ -187,17 +212,21 @@ fn parse_field_ref(s: &str) -> Result<(&str, &str), QueryError> {
     Ok((parts[0], parts[1]))
 }
 
-fn join_predicate_sql(left: &str, right: &str, rel: &Relationship) -> Option<Vec<String>> {
+fn join_keys(left: &str, right: &str, rel: &Relationship) -> Option<Vec<JoinKey>> {
     if left == rel.from && right == rel.to {
         if rel.from_columns.len() != rel.to_columns.len() {
             return None;
         }
         return Some(
-            rel
-                .from_columns
+            rel.from_columns
                 .iter()
                 .zip(rel.to_columns.iter())
-                .map(|(a, b)| format!("{left}.{a} = {right}.{b}"))
+                .map(|(a, b)| JoinKey {
+                    left_dataset: left.to_string(),
+                    left_sql: a.clone(),
+                    right_dataset: right.to_string(),
+                    right_sql: b.clone(),
+                })
                 .collect(),
         );
     }
@@ -206,11 +235,15 @@ fn join_predicate_sql(left: &str, right: &str, rel: &Relationship) -> Option<Vec
             return None;
         }
         return Some(
-            rel
-                .from_columns
+            rel.from_columns
                 .iter()
                 .zip(rel.to_columns.iter())
-                .map(|(a, b)| format!("{left}.{b} = {right}.{a}"))
+                .map(|(a, b)| JoinKey {
+                    left_dataset: left.to_string(),
+                    left_sql: b.clone(),
+                    right_dataset: right.to_string(),
+                    right_sql: a.clone(),
+                })
                 .collect(),
         );
     }
@@ -232,28 +265,28 @@ fn build_join_order(
             let a = rel.from.as_str();
             let b = rel.to.as_str();
             if included.contains(a) && required.contains(b) && !included.contains(b) {
-                if let Some(on) = join_predicate_sql(a, b, rel) {
+                if let Some(on) = join_keys(a, b, rel) {
                     step = Some((
                         a.to_string(),
                         b.to_string(),
                         BoundJoin {
                             left_dataset: a.to_string(),
                             right_dataset: b.to_string(),
-                            on_predicates: on,
+                            on,
                         },
                     ));
                     break;
                 }
             }
             if included.contains(b) && required.contains(a) && !included.contains(a) {
-                if let Some(on) = join_predicate_sql(b, a, rel) {
+                if let Some(on) = join_keys(b, a, rel) {
                     step = Some((
                         b.to_string(),
                         a.to_string(),
                         BoundJoin {
                             left_dataset: b.to_string(),
                             right_dataset: a.to_string(),
-                            on_predicates: on,
+                            on,
                         },
                     ));
                     break;

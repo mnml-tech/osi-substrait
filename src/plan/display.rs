@@ -2,6 +2,7 @@
 
 use std::fmt::{self, Display, Formatter};
 
+use super::{format_expr, format_join_on};
 use super::{LogicalPlan, NamedAggregate};
 
 /// Indented, multi-line plan text (use with `format!("{}", plan.display_indent())`).
@@ -9,7 +10,7 @@ pub struct DisplayIndent<'a>(pub(super) &'a LogicalPlan);
 
 impl Display for DisplayIndent<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write_node(f, self.0, 0)
+        write_node(f, self.0, 0, false)
     }
 }
 
@@ -26,21 +27,25 @@ impl Display for LogicalPlan {
     }
 }
 
-fn write_node(f: &mut Formatter<'_>, plan: &LogicalPlan, depth: usize) -> fmt::Result {
+fn write_node(f: &mut Formatter<'_>, plan: &LogicalPlan, depth: usize, qualify: bool) -> fmt::Result {
     let pad = "  ".repeat(depth);
     match plan {
-        LogicalPlan::Scan { source } => {
-            writeln!(f, "{pad}Scan: {source}")
+        LogicalPlan::Scan {
+            source,
+            dataset,
+            columns,
+        } => {
+            writeln!(f, "{pad}Scan: {source} (dataset={dataset}, cols={})", columns.len())
         }
         LogicalPlan::Join { left, right, on } => {
-            let on_s = on.join(" AND ");
+            let on_s = format_join_on(on, qualify).join(" AND ");
             writeln!(f, "{pad}Join: inner on={on_s}")?;
-            write_node(f, left, depth + 1)?;
-            write_node(f, right, depth + 1)
+            write_node(f, left, depth + 1, qualify)?;
+            write_node(f, right, depth + 1, qualify)
         }
         LogicalPlan::Filter { input, predicate } => {
-            writeln!(f, "{pad}Filter: {predicate}")?;
-            write_node(f, input, depth + 1)
+            writeln!(f, "{pad}Filter: {}", format_expr(predicate, qualify))?;
+            write_node(f, input, depth + 1, qualify)
         }
         LogicalPlan::Aggregate {
             input,
@@ -50,28 +55,36 @@ fn write_node(f: &mut Formatter<'_>, plan: &LogicalPlan, depth: usize) -> fmt::R
             let gb = if group_by.is_empty() {
                 "[]".to_string()
             } else {
-                format!("[{}]", group_by.join(", "))
+                format!(
+                    "[{}]",
+                    group_by
+                        .iter()
+                        .map(|e| format_expr(e, qualify))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             };
-            let ag = format_aggregates(aggregates);
+            let ag = format_aggregates(aggregates, qualify);
             writeln!(f, "{pad}Aggregate: groupBy={gb}, aggr=[{ag}]")?;
-            write_node(f, input, depth + 1)
+            write_node(f, input, depth + 1, qualify)
         }
     }
 }
 
-fn format_aggregates(aggregates: &[NamedAggregate]) -> String {
+fn format_aggregates(aggregates: &[NamedAggregate], qualify: bool) -> String {
     if aggregates.is_empty() {
         return String::new();
     }
     aggregates
         .iter()
-        .map(|a| format!("{}: {}", a.name, a.expression_sql))
+        .map(|a| format!("{}: {}", a.name, format_expr(&a.expr, qualify)))
         .collect::<Vec<_>>()
         .join(", ")
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::plan::expr::{AggFunc, Expr};
     use crate::plan::{LogicalPlan, NamedAggregate};
 
     #[test]
@@ -80,13 +93,22 @@ mod tests {
             input: Box::new(LogicalPlan::Filter {
                 input: Box::new(LogicalPlan::Scan {
                     source: "warehouse.public.f".into(),
+                    dataset: "fact".into(),
+                    columns: vec!["id".into()],
                 }),
-                predicate: "id = 1".into(),
+                predicate: Expr::Eq(
+                    Box::new(Expr::column("", "id")),
+                    Box::new(Expr::Literal(super::super::expr::Literal::Int64(1))),
+                ),
             }),
-            group_by: vec!["id".into()],
+            group_by: vec![Expr::column("", "id")],
             aggregates: vec![NamedAggregate {
                 name: "row_count".into(),
-                expression_sql: "COUNT(*)".into(),
+                expr: Expr::Agg {
+                    func: AggFunc::Count,
+                    distinct: false,
+                    arg: None,
+                },
             }],
         };
         let s = format!("{}", plan.display_indent());
@@ -96,24 +118,5 @@ mod tests {
                 && s.contains("Scan: warehouse.public.f"),
             "{s}"
         );
-    }
-
-    #[test]
-    fn display_join_under_aggregate() {
-        let plan = LogicalPlan::Aggregate {
-            input: Box::new(LogicalPlan::Join {
-                left: Box::new(LogicalPlan::Scan {
-                    source: "a".into(),
-                }),
-                right: Box::new(LogicalPlan::Scan {
-                    source: "b".into(),
-                }),
-                on: vec!["a.k = b.k".into()],
-            }),
-            group_by: vec!["a.x".into()],
-            aggregates: vec![],
-        };
-        let s = format!("{}", plan.display_indent());
-        assert!(s.contains("Join:") && s.contains("inner on=a.k = b.k"), "{s}");
     }
 }

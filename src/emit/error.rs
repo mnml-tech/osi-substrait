@@ -8,4 +8,10 @@ pub enum EmitError {
 
     #[error("invalid plan structure: {0}")]
     InvalidPlan(&'static str),
+
+    #[error("column not found in plan schema: {0}")]
+    ColumnNotFound(String),
+
+    #[error("unsupported expression for Substrait: {0}")]
+    UnsupportedExpression(String),
 }

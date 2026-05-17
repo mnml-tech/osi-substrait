@@ -1,7 +1,7 @@
 //! Integration tests: fixtures, TPC-DS example, round-trip.
 
 use osi_substrait::model::{
-    AiContext, Dialect, DialectExpression, Expression, FieldDimension, OsiDocument, SemanticModel,
+    AiContext, DialectExpression, Expression, FieldDimension, OsiDocument, SemanticModel,
 };
 use osi_substrait::{parser, validate};
 use std::path::PathBuf;
@@ -75,10 +75,7 @@ fn roundtrip_yaml_document() {
                 fields: vec![osi_substrait::model::Field {
                     name: "x".to_string(),
                     expression: Expression {
-                        dialects: vec![DialectExpression {
-                            dialect: Dialect::AnsiSql,
-                            expression: "x".to_string(),
-                        }],
+                        dialects: vec![DialectExpression::ansi_sql("x")],
                     },
                     dimension: Some(FieldDimension {
                         is_time: Some(false),

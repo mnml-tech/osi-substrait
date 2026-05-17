@@ -23,6 +23,9 @@ pub struct SemanticQuery {
 }
 
 /// Predicate on a field (`dataset.field`).
+///
+/// For **column-to-column** equality, set `operator` to `"eq_field"` (or `"eq_column"`) and
+/// `value` to a JSON string holding the RHS reference, e.g. `"orders.ship_date"`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FilterSpec {
